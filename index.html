@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>智家 AINO · 智能家居控制中心</title>
+<!--
+  ============================================================================
+  智家 AINO — 智能家居控制中心 · 人机交互课程综合作业
+  设计中嵌入的 HCI 理论（全文以 [HCI:xxx] 标注，便于撰写报告对照表）：
+    [HCI:隐喻]    旋钮/开关/窗帘/灯泡等实体控件映射现实操作，零学习成本
+    [HCI:状态机]  设备多态(开/关/调节中)；情景模式=多设备宏状态编排
+    [HCI:反馈]    Doherty阈值(<400ms) 即时视觉+听觉+环境光三重反馈
+    [HCI:多模态]  视觉(动效) + 听觉(WebAudio) + 文字(Toast) + 语音输入
+    [HCI:认知负荷]卡片分组(格式塔)、情景模式封装复杂操作、信息预注意编码
+    [HCI:Nielsen] 可见性/一致性/容错/用户控制/现实匹配 等启发式
+    [HCI:Fitts]   高频大控件、圆形旋钮中心区大易命中
+    [HCI:直接操纵]拖拽旋钮/滑块即时改变物理量，所见即所得
+    [HCI:映射]    控件空间布局对应房间设备的自然映射
+  ============================================================================
+-->
+<style>
+/* ====================================================================
+   1. 设计 Token —— 一致性的物理载体 [HCI:Nielsen-一致性]
+   ==================================================================== */
+:root{
+  --accent:#5b8cff; --accent2:#a855f7;
+  --warm:#ffb347; --cool:#4fc3f7; --ok:#34d399; --danger:#fb7185;
+  --bg0:#0b0e17; --bg1:#121728;
+  --glass:rgba(255,255,255,.06); --glass-strong:rgba(255,255,255,.10);
+  --stroke:rgba(255,255,255,.10); --stroke-2:rgba(255,255,255,.18);
+  --text:#eef1f8; --text-2:#b9c1d2; --text-3:#9aa4bc;
+  --r1:14px; --r2:20px; --r3:28px;
+  --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --ease:cubic-bezier(.34,1.2,.4,1); --ease2:cubic-bezier(.4,0,.2,1);
+  --shadow:0 8px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  color:var(--text); overflow-x:hidden;
+  /* 环境光背景：随灯光状态实时渐变，营造"氛围反馈" [HCI:反馈-环境/多模态] */
+  background:
+    radial-gradient(1200px 600px at var(--amb-x,20%) -10%, var(--amb,rgba(91,140,255,.25)), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(168,85,247,.18), transparent 55%),
+    linear-gradient(160deg,var(--bg0),var(--bg1));
+  background-attachment:fixed;
+  transition:background .8s var(--ease2);
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+
+/* 玻璃拟态通用卡 [HCI:格式塔-相似性] */
+.glass{
+  background:var(--glass); backdrop-filter:blur(18px);
+  border:1px solid var(--stroke); border-radius:var(--r2); box-shadow:var(--shadow);
+}
+
+/* ====================================================================
+   2. 侧栏：房间导航 + 情景模式 [HCI:映射][HCI:认知负荷-分组]
+   ==================================================================== */
+.sidebar{
+  padding:var(--s5) var(--s4); display:flex; flex-direction:column; gap:var(--s5);
+  border-right:1px solid var(--stroke); background:rgba(0,0,0,.18); backdrop-filter:blur(8px);
+}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:.5px}
+.logo .mark{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 18px rgba(91,140,255,.4);font-size:20px}
+.logo small{display:block;font-size:11px;font-weight:500;color:var(--text-3);letter-spacing:2px}
+.nav-title{font-size:11px;color:var(--text-3);letter-spacing:2px;margin:0 0 8px 6px;font-weight:700}
+.rooms{display:flex;flex-direction:column;gap:4px}
+.room{
+  display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--r1);
+  color:var(--text-2);font-weight:600;font-size:14px;transition:all .2s var(--ease2);position:relative;
+}
+.room .ic{font-size:18px;width:22px;text-align:center}
+.room .n{margin-left:auto;font-size:11px;color:var(--text-3);background:var(--glass);padding:1px 8px;border-radius:999px}
+/* 徽标含义：绿点+数字 = 该房间正在运行的设备数 [HCI:预注意编码/可见性] */
+.room .n.lit{color:var(--ok)}
+.room .n.lit::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--ok);margin-right:5px;vertical-align:middle;box-shadow:0 0 6px var(--ok)}
+.room:hover{background:var(--glass);color:var(--text)}
+.room.active{background:linear-gradient(100deg,rgba(91,140,255,.25),rgba(168,85,247,.15));color:#fff;border:1px solid var(--stroke-2)}
+.room.active .n{color:var(--accent)}
+
+/* ====================================================================
+   3. 主区
+   ==================================================================== */
+/* 底部留白：避免固定的语音指令栏遮挡最后一块内容 [HCI:可见性] */
+.main{padding:var(--s5) var(--s6) 120px;display:flex;flex-direction:column;gap:var(--s5);max-width:1180px}
+.topbar{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
+.greet h1{font-size:30px;font-weight:800;letter-spacing:.5px}
+.greet p{color:var(--text-2);margin-top:4px;font-size:14px}
+.status-pills{display:flex;gap:var(--s3);flex-wrap:wrap}
+.pill{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:var(--r1)}
+.pill .big{font-size:20px;font-weight:800;line-height:1}
+.pill .lbl{font-size:11px;color:var(--text-3)}
+.pill .em{font-size:22px}
+
+/* 情景模式：复杂操作的封装，一键编排多设备 [HCI:认知负荷][HCI:状态机-宏转换] */
+.scenes{display:flex;gap:var(--s3);flex-wrap:wrap}
+.scene{
+  flex:1;min-width:120px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+  padding:16px 18px;border-radius:var(--r2);transition:transform .2s var(--ease),background .3s;
+  border:1px solid var(--stroke);background:var(--glass);
+}
+.scene:hover{transform:translateY(-3px) scale(1.01);background:var(--glass-strong)}
+.scene:active{transform:scale(.97)}
+.scene.on{border-color:var(--stroke-2);box-shadow:0 0 0 1px var(--accent),0 10px 30px rgba(91,140,255,.25)}
+.scene .se{font-size:26px}
+.scene .st{font-weight:700;font-size:15px;display:flex;align-items:center;gap:6px}
+.scene .st .area{font-size:10px;font-weight:600;color:var(--text-3);background:var(--glass);padding:1px 7px;border-radius:999px}
+.scene .sd{font-size:11px;color:var(--text-3)}
+
+.section-h{display:flex;align-items:center;gap:10px;margin-bottom:-6px}
+.section-h h2{font-size:17px;font-weight:700}
+.section-h .hint{font-size:12px;color:var(--text-3)}
+
+/* 设备网格 [HCI:格式塔-接近性] */
+.devices{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:var(--s4)}
+.device{padding:var(--s4);position:relative;overflow:hidden;cursor:pointer;transition:transform .25s var(--ease),border-color .3s,box-shadow .3s}
+.device:hover{transform:translateY(-2px)}
+.device.on{border-color:var(--stroke-2)}
+.dev-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dev-icon{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;
+  background:var(--glass);transition:all .3s var(--ease)}
+.device.on .dev-icon{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 18px rgba(91,140,255,.4)}
+.dev-name{font-weight:700;font-size:15px;margin-top:14px}
+.dev-state{font-size:12px;color:var(--text-3);margin-top:2px;transition:color .3s}
+.device.on .dev-state{color:var(--accent)}
+
+/* 开关 [HCI:隐喻-物理开关] */
+.switch{width:48px;height:28px;border-radius:999px;background:rgba(255,255,255,.12);position:relative;
+  transition:background .3s var(--ease2);flex-shrink:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:#fff;transition:transform .3s var(--ease),background .3s;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.switch.on{background:linear-gradient(120deg,var(--accent),var(--accent2))}
+.switch.on::after{transform:translateX(20px)}
+
+/* 滑块（亮度/音量/窗帘）—— 直接操纵 [HCI:直接操纵] */
+.slider-row{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.slider-row .v{display:flex;justify-content:space-between;font-size:12px;color:var(--text-2)}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:999px;outline:none;
+  background:rgba(255,255,255,.12)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .15s}
+input[type=range]::-webkit-slider-thumb:active{transform:scale(1.25)}
+input[type=range]:disabled{opacity:.35}
+
+/* 灯光调色 [HCI:反馈-环境光联动] */
+.swatches{display:flex;gap:8px;margin-top:14px}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;transition:transform .15s,border-color .2s}
+.swatch:hover{transform:scale(1.15)}
+.swatch.sel{border-color:#fff;transform:scale(1.15)}
+.swatch.sel::after{content:"✓";display:grid;place-items:center;height:100%;color:#0b0e17;font-size:13px;font-weight:900;text-shadow:0 0 2px rgba(255,255,255,.7)}
+
+/* 窗帘动画图形 [HCI:隐喻] */
+.curtain-vis{height:54px;margin-top:14px;border-radius:10px;overflow:hidden;position:relative;
+  background:linear-gradient(#1b2236,#0d1220);border:1px solid var(--stroke)}
+.curtain-vis::before{content:"☀";position:absolute;inset:0;display:grid;place-items:center;color:#ffd86b;font-size:24px}
+.curtain-vis .panel{position:absolute;top:0;bottom:0;width:50%;
+  background:repeating-linear-gradient(90deg,#3b4668,#3b4668 6px,#2f3855 6px,#2f3855 12px);transition:transform .5s var(--ease2)}
+.curtain-vis .left{left:0} .curtain-vis .right{right:0}
+
+/* 大号圆形温控旋钮 —— 直接操纵核心控件 [HCI:Fitts][HCI:直接操纵] */
+.thermo{grid-column:span 2;display:flex;align-items:center;gap:var(--s5);padding:var(--s5)}
+@media(max-width:560px){.thermo{grid-column:span 1;flex-direction:column}}
+.dial{width:180px;height:180px;position:relative;flex-shrink:0;touch-action:none;cursor:grab}
+.dial:active{cursor:grabbing}
+.dial svg{transform:rotate(135deg)}
+.dial .track{fill:none;stroke:rgba(255,255,255,.10);stroke-width:14;stroke-linecap:round}
+.dial .prog{fill:none;stroke-width:14;stroke-linecap:round;transition:stroke .4s,stroke-dashoffset .25s var(--ease2)}
+.dial .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dial .setlabel{font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:-4px}
+.dial .temp{font-size:38px;font-weight:800;letter-spacing:-1px}
+.dial .temp sup{font-size:18px;font-weight:600;color:var(--text-2)}
+.dial .mode{font-size:12px;color:var(--text-2);margin-top:2px}
+.dial .handle{position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);pointer-events:none}
+.thermo-info{flex:1}
+.thermo-info h3{font-size:18px;font-weight:700;margin-bottom:6px}
+.thermo-info p{color:var(--text-2);font-size:13px;line-height:1.7}
+.modebar{display:flex;gap:8px;margin-top:14px}
+.mbtn{padding:8px 14px;border-radius:11px;font-size:13px;font-weight:600;color:var(--text-2);
+  background:var(--glass);border:1px solid var(--stroke);transition:all .2s}
+.mbtn.on{color:#fff;background:linear-gradient(120deg,var(--accent),var(--accent2));border-color:transparent}
+
+/* ====================================================================
+   4. 语音指令栏（模拟 NLP 解析）[HCI:多模态-语音输入][HCI:自然交互]
+   ==================================================================== */
+.voicebar{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
+  display:flex;align-items:center;gap:12px;padding:10px 12px 10px 20px;width:min(560px,90vw)}
+.voicebar .mic{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:20px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));flex-shrink:0;transition:transform .2s;
+  box-shadow:0 6px 18px rgba(91,140,255,.4)}
+.voicebar .mic:active{transform:scale(.9)}
+.voicebar .mic.listening{animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(91,140,255,.5)}50%{box-shadow:0 0 0 14px rgba(91,140,255,0)}}
+.voicebar input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:15px}
+.voicebar input::placeholder{color:var(--text-3)}
+.voicebar .send{font-size:13px;color:var(--accent);font-weight:700;padding:8px 12px;border-radius:10px}
+.voicebar .send:hover{background:var(--glass)}
+
+/* Toast 反馈 [HCI:反馈][HCI:Nielsen-可见性] */
+.toasts{position:fixed;right:24px;top:24px;z-index:80;display:flex;flex-direction:column;gap:10px}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;font-size:13px;font-weight:600;
+  background:rgba(20,26,42,.85);backdrop-filter:blur(14px);border:1px solid var(--stroke-2);box-shadow:var(--shadow);
+  animation:tin .3s var(--ease);max-width:300px}
+.toast.out{animation:tout .3s var(--ease2) forwards}
+@keyframes tin{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes tout{to{opacity:0;transform:translateX(40px)}}
+.toast .te{font-size:18px}
+
+/* ====================================================================
+   5. 能耗趋势图表 —— 数据可视化 [HCI:认知负荷-预注意属性][HCI:信息可视化]
+   ==================================================================== */
+.panel-2col{display:grid;grid-template-columns:1.4fr 1fr;gap:var(--s4)}
+@media(max-width:860px){.panel-2col{grid-template-columns:1fr}}
+.chart-card{padding:var(--s5)}
+.chart-card h3,.auto-card h3{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.chart-card .sub{font-size:12px;color:var(--text-3);margin:4px 0 16px}
+.chart-svg{width:100%;height:160px;overflow:visible}
+.chart-svg .grid{stroke:rgba(255,255,255,.06);stroke-width:1}
+.chart-svg .axis{fill:var(--text-3);font-size:10px}
+.chart-svg .area{fill:url(#gArea)}
+.chart-svg .line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.chart-svg .line.future{stroke:var(--text-3);stroke-width:2;stroke-dasharray:4 5;opacity:.75}
+.chart-svg .now{fill:#fff;stroke:var(--accent);stroke-width:3}
+.chart-svg .nowline{stroke:var(--accent2);stroke-width:1;stroke-dasharray:3 3;opacity:.6}
+.room-bars{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.rbar{display:grid;grid-template-columns:48px 1fr 52px;align-items:center;gap:10px;font-size:12px;color:var(--text-2)}
+.rbar .track{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.rbar .fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s var(--ease2)}
+.rbar .val{text-align:right;color:var(--text)}
+
+/* ====================================================================
+   6. 定时自动化 —— 条件→动作映射 [HCI:自动化][HCI:系统主动性与控制权平衡]
+   ==================================================================== */
+.auto-card{padding:var(--s5);display:flex;flex-direction:column}
+.auto-card .sub{font-size:12px;color:var(--text-3);margin:4px 0 14px}
+.rule{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--r1);background:var(--glass);margin-bottom:8px}
+.rule .rt{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;width:52px}
+.rule .rl{flex:1;font-size:13px}.rule .rl small{display:block;color:var(--text-3);font-size:11px}
+.rule .sw{width:40px;height:23px;border-radius:999px;background:rgba(255,255,255,.12);position:relative;flex-shrink:0;transition:background .3s}
+.rule .sw::after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:transform .3s}
+.rule .sw.on{background:linear-gradient(120deg,var(--accent),var(--accent2))}.rule .sw.on::after{transform:translateX(17px)}
+.rule .del{color:var(--text-3);font-size:16px;padding:2px 6px;border-radius:8px}.rule .del:hover{color:var(--danger);background:var(--glass)}
+.rule-add{display:flex;gap:8px;margin-top:auto;padding-top:12px;flex-wrap:wrap}
+/* color-scheme:dark 让原生时间选择器/下拉以暗色渲染，文字才看得清 [HCI:可见性] */
+.rule-add input,.rule-add select{height:40px;border-radius:10px;background:rgba(28,34,52,.92);
+  border:1px solid var(--stroke-2);color:var(--text);padding:0 12px;font-size:14px;outline:none;color-scheme:dark}
+.rule-add input:focus,.rule-add select:focus{border-color:var(--accent)}
+.rule-add select option{background:#1a2032;color:var(--text)}
+.rule-add input{width:108px} .rule-add select{flex:1;min-width:140px;cursor:pointer}
+.rule-add .add{height:38px;padding:0 16px;border-radius:10px;font-weight:700;font-size:13px;background:linear-gradient(120deg,var(--accent),var(--accent2));color:#fff}
+.rule-add .add:active{transform:scale(.96)}
+
+/* ====================================================================
+   7. 新手引导 —— 学习性/帮助 [HCI:Nielsen-帮助文档][HCI:认知负荷-渐进引导]
+   ==================================================================== */
+.onb{position:fixed;inset:0;z-index:200;display:none}
+.onb.show{display:block}
+.onb-spot{position:absolute;border-radius:18px;box-shadow:0 0 0 9999px rgba(5,8,16,.78);transition:all .4s var(--ease2);pointer-events:none;border:2px solid var(--accent)}
+.onb-tip{position:absolute;max-width:300px;padding:18px 20px;border-radius:var(--r2);background:rgba(20,26,42,.96);
+  border:1px solid var(--stroke-2);box-shadow:var(--shadow);transition:all .4s var(--ease2)}
+.onb-tip h4{font-size:16px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.onb-tip p{font-size:13px;color:var(--text-2);line-height:1.7}
+.onb-tip .row{display:flex;align-items:center;justify-content:space-between;margin-top:16px}
+.onb-tip .dots{display:flex;gap:6px}.onb-tip .dot{width:7px;height:7px;border-radius:50%;background:var(--stroke-2)}.onb-tip .dot.on{background:var(--accent);width:18px;border-radius:4px}
+.onb-tip .next{padding:8px 18px;border-radius:10px;font-weight:700;font-size:13px;background:linear-gradient(120deg,var(--accent),var(--accent2));color:#fff}
+.onb-tip .skip{font-size:12px;color:var(--text-3)}
+
+.hidden{display:none!important}
+
+/* 键盘焦点可见 —— 无障碍/用户控制 [HCI:可达性] */
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+input[type=range]:focus-visible{outline-offset:6px}
+
+/* Toast 内联操作按钮（撤销）[HCI:Nielsen-用户控制与自由] */
+.toast-act{color:var(--accent);font-weight:700;font-size:13px;padding:6px 10px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.toast-act:hover{background:var(--glass)}
+
+/* 移动端汉堡按钮 [HCI:响应式可达性] */
+.menu-btn{display:none;position:fixed;top:16px;left:16px;z-index:130;width:44px;height:44px;
+  border-radius:12px;place-items:center;font-size:20px}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;opacity:0;pointer-events:none;
+  transition:opacity .3s var(--ease2)}
+.scrim.show{opacity:1;pointer-events:auto}
+
+@media(max-width:860px){
+  .app{grid-template-columns:1fr}
+  .menu-btn{display:grid}
+  .main{padding:64px var(--s4) calc(var(--s4) + 80px)}
+  /* 侧栏改为可滑出的抽屉，而非直接隐藏——移动端仍可切房间/调系统 */
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;z-index:120;
+    transform:translateX(-100%);transition:transform .3s var(--ease2);
+    background:rgba(12,16,26,.97);border-right:1px solid var(--stroke-2);overflow-y:auto}
+  .sidebar.open{transform:none}
+}
+
+/* 尊重系统"减弱动效"偏好 —— 前庭障碍友好 [HCI:可达性] */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<button class="menu-btn glass" id="menuBtn" aria-label="打开菜单" aria-expanded="false">☰</button>
+<div class="scrim" id="scrim"></div>
+
+<div class="app">
+
+  <!-- ===== 侧栏 ===== -->
+  <aside class="sidebar">
+    <div class="logo"><span class="mark">⌂</span><span>智家 AINO<small>SMART HOME</small></span></div>
+    <div>
+      <p class="nav-title">房间 · <span style="color:var(--ok)">●</span> 数字=运行设备数</p>
+      <nav class="rooms" id="rooms"></nav>
+    </div>
+    <div style="margin-top:auto">
+      <p class="nav-title">系统</p>
+      <nav class="rooms">
+        <button class="room" id="soundToggle"><span class="ic">🔊</span>提示音<span class="n" id="soundState">开</span></button>
+        <button class="room" id="helpBtn"><span class="ic">❓</span>新手引导</button>
+        <button class="room" id="resetBtn"><span class="ic">↺</span>恢复默认</button>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main class="main">
+    <header class="topbar">
+      <div class="greet">
+        <h1 id="greetText">晚上好</h1>
+        <p id="subText">欢迎回家 · <span id="clock">--:--</span></p>
+      </div>
+      <div class="status-pills">
+        <div class="pill glass"><span class="em">🌡️</span><div><div class="big" id="pillTemp">26°</div><div class="lbl">室内温度</div></div></div>
+        <div class="pill glass"><span class="em">⚡</span><div><div class="big" id="pillPower">0.0kW</div><div class="lbl">当前功耗</div></div></div>
+        <div class="pill glass"><span class="em">💡</span><div><div class="big" id="pillOn">0</div><div class="lbl">运行设备</div></div></div>
+      </div>
+    </header>
+
+    <!-- 情景模式 -->
+    <section>
+      <div class="section-h" style="margin-bottom:14px"><h2>🏠 全屋情景</h2><span class="hint">作用于全屋相关设备，与左侧所选房间无关 · 点击切换</span></div>
+      <div class="scenes" id="scenes"></div>
+    </section>
+
+    <!-- 温控（始终显示主空调） -->
+    <section>
+      <div class="section-h" style="margin-bottom:14px"><h2 id="roomTitle">客厅</h2><span class="hint" id="roomHint">拖动旋钮调节温度 · 点击卡片开关设备</span></div>
+      <div class="devices" id="devices"></div>
+    </section>
+
+    <!-- 能耗分析 + 定时自动化 -->
+    <section class="panel-2col">
+      <div class="chart-card glass">
+        <h3>📊 今日能耗趋势</h3>
+        <p class="sub">家庭总功耗（kW）· <b style="color:var(--text-2)">实线</b>=今日已用电，<b style="color:var(--text-3)">虚线</b>=后续预测</p>
+        <svg class="chart-svg" id="chart" viewBox="0 0 520 160" preserveAspectRatio="none"></svg>
+        <div class="room-bars" id="roomBars"></div>
+      </div>
+      <div class="auto-card glass">
+        <h3>⏰ 定时自动化</h3>
+        <p class="sub">到点自动执行 · 让家在你开口前就准备好</p>
+        <div id="rules"></div>
+        <div class="rule-add">
+          <input type="time" id="ruleTime" value="23:00"/>
+          <select id="ruleAction">
+            <option value="lights-off">关闭所有灯</option>
+            <option value="lights-on">打开所有灯</option>
+            <option value="curtain-close">关闭所有窗帘</option>
+            <option value="curtain-open">打开所有窗帘</option>
+            <option value="scene-sleep">进入睡眠模式</option>
+            <option value="scene-morning">进入晨起模式</option>
+            <option value="scene-away">进入离家模式</option>
+          </select>
+          <button class="add" id="ruleAdd">＋ 添加</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 语音指令栏 -->
+<div class="voicebar glass">
+  <button class="mic" id="mic" title="语音指令">🎙️</button>
+  <input id="voiceInput" type="text" placeholder='试试："打开客厅灯" / "空调调到24度" / "灯暗一点" / "全部关闭" / "观影模式" / "帮助"'/>
+  <button class="send" id="voiceSend">执行</button>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- 新手引导遮罩 [HCI:Nielsen-帮助文档] -->
+<div class="onb" id="onb">
+  <div class="onb-spot" id="onbSpot"></div>
+  <div class="onb-tip" id="onbTip">
+    <h4 id="onbTitle"></h4>
+    <p id="onbText"></p>
+    <div class="row">
+      <span class="skip" id="onbSkip">跳过引导</span>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="dots" id="onbDots"></div>
+        <button class="next" id="onbNext">下一步</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   设备模型 + 状态机 [HCI:状态机]
+   每个设备含 on 状态及各自可调参数；房间对设备分组 [HCI:映射]
+   ========================================================================== */
+const LIGHT_COLORS=[
+  {name:'暖光',v:'#ffb86b',amb:'rgba(255,184,107,.30)'},
+  {name:'日光',v:'#fdf6e3',amb:'rgba(253,246,227,.22)'},
+  {name:'冷光',v:'#9ecbff',amb:'rgba(120,170,255,.30)'},
+  {name:'氛围紫',v:'#c084fc',amb:'rgba(192,132,252,.32)'},
+  {name:'护眼绿',v:'#86efac',amb:'rgba(134,239,172,.28)'},
+];
+
+function defaults(){return{
+  rooms:[
+    {id:'living',name:'客厅',ic:'🛋️'},
+    {id:'bed',name:'卧室',ic:'🛏️'},
+    {id:'kitchen',name:'厨房',ic:'🍳'},
+    {id:'study',name:'书房',ic:'📚'},
+  ],
+  devices:[
+    {id:'ac1',room:'living',type:'ac',name:'空调',icon:'❄️',on:true,temp:26,mode:'cool'},
+    {id:'lt1',room:'living',type:'light',name:'主灯',icon:'💡',on:true,bright:80,color:0},
+    {id:'cur1',room:'living',type:'curtain',name:'窗帘',icon:'🪟',on:true,open:70},
+    {id:'tv1',room:'living',type:'tv',name:'电视',icon:'📺',on:false},
+    {id:'spk1',room:'living',type:'speaker',name:'音箱',icon:'🔈',on:false,vol:40},
+
+    {id:'ac2',room:'bed',type:'ac',name:'空调',icon:'❄️',on:false,temp:25,mode:'cool'},
+    {id:'lt2',room:'bed',type:'light',name:'床头灯',icon:'🛌',on:false,bright:40,color:0},
+    {id:'cur2',room:'bed',type:'curtain',name:'窗帘',icon:'🪟',on:true,open:30},
+
+    {id:'lt3',room:'kitchen',type:'light',name:'吸顶灯',icon:'💡',on:false,bright:100,color:1},
+    {id:'hood',room:'kitchen',type:'tv',name:'抽油烟机',icon:'🌀',on:false},
+
+    {id:'lt4',room:'study',type:'light',name:'台灯',icon:'🖥️',on:true,bright:65,color:4},
+    {id:'ac3',room:'study',type:'ac',name:'空调',icon:'❄️',on:false,temp:24,mode:'cool'},
+  ],
+  // 定时自动化规则（条件→动作）[HCI:自动化]
+  rules:[
+    {id:'r1',time:'07:00',action:'scene-morning',on:true},
+    {id:'r2',time:'23:30',action:'scene-sleep',on:true},
+  ],
+};}
+
+/* 情景模式 = 对多个设备的目标状态集合（宏状态转换）[HCI:认知负荷-封装] */
+const SCENES=[
+  {id:'home',name:'回家',em:'🏠',desc:'灯光柔和 空调开启 · 暖夜慢歌',area:'客厅',apply:s=>{
+    set(s,'ac1',{on:true,temp:26});set(s,'lt1',{on:true,bright:80,color:0});set(s,'cur1',{on:true,open:60});set(s,'spk1',{on:true,vol:30});set(s,'tv1',{on:false});}},
+  {id:'movie',name:'观影',em:'🎬',desc:'暗光 关窗帘 开电视',area:'客厅',apply:s=>{
+    set(s,'lt1',{on:true,bright:15,color:3});set(s,'cur1',{on:false,open:0});set(s,'tv1',{on:true});set(s,'spk1',{on:true,vol:60});set(s,'ac1',{on:true,temp:25});}},
+  {id:'sleep',name:'睡眠',em:'🌙',desc:'关灯 关窗帘 静音',area:'全屋',apply:s=>{
+    s.devices.forEach(d=>{if(d.type==='light')d.on=false;if(d.type==='curtain'){d.on=false;d.open=0;}if(d.type==='tv'||d.type==='speaker')d.on=false;});
+    set(s,'ac1',{on:true,temp:27,mode:'cool'});set(s,'lt2',{on:true,bright:8,color:0});}},
+  {id:'morning',name:'晨起',em:'🌅',desc:'开窗帘 日光 · 明快晨曲',area:'全屋',apply:s=>{
+    s.devices.forEach(d=>{if(d.type==='curtain'){d.on=true;d.open=100;}});set(s,'lt1',{on:true,bright:70,color:1});set(s,'spk1',{on:true,vol:55});set(s,'ac1',{on:false});}},
+  {id:'away',name:'离家',em:'🚪',desc:'全部关闭 节能',area:'全屋',apply:s=>{
+    s.devices.forEach(d=>{d.on=false;if(d.type==='curtain')d.open=0;});}},
+];
+function set(s,id,patch){const d=s.devices.find(x=>x.id===id);if(d)Object.assign(d,patch);}
+
+/* 情景别名表：口语同义词 + 浏览器语音常见同音误识（晨起→陈启/辰起…）[HCI:容错-宽进严出] */
+const SCENE_ALIASES={
+  home:['回家','到家','回来了','我回来了'],
+  movie:['观影','看电影','电影模式','影院','看片'],
+  sleep:['睡眠','睡觉','晚安','入睡','休息了'],
+  morning:['晨起','早安','起床','陈起','陈启','辰起','成器','沉浸'],
+  away:['离家','出门','外出','我走了','离开家','立家'],
+};
+function matchScene(t){
+  for(const s of SCENES){
+    if(t.includes(s.name)||t.includes(s.id))return s;
+    if((SCENE_ALIASES[s.id]||[]).some(a=>t.includes(a)))return s;
+  }
+  return null;
+}
+
+/* ---------- 持久化 ---------- */
+const LS='aino.state.v1', LSC='aino.cfg.v1';
+let S=load(LS,defaults()), cfg=load(LSC,{sound:true,room:'living',scene:null});
+if(!S.rules) S.rules=defaults().rules; // 兼容旧版本本地数据
+if(typeof S.indoor!=='number') S.indoor=26; // 实测室内温度（带热惯性，非空调设定值）
+function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
+function persist(){localStorage.setItem(LS,JSON.stringify(S));localStorage.setItem(LSC,JSON.stringify(cfg))}
+
+/* ==========================================================================
+   多模态音效 [HCI:多模态]
+   ========================================================================== */
+let AC=null;
+function beep(kind){
+  if(!cfg.sound)return;
+  try{
+    AC=AC||new(window.AudioContext||window.webkitAudioContext)();
+    const seq={on:[523,784],off:[392,262],tick:[660],scene:[523,659,784],err:[200,180]}[kind]||[523];
+    seq.forEach((f,i)=>{
+      const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+i*.08;
+      o.frequency.value=f;o.type='sine';
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.14,t+.01);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.16);
+      o.connect(g).connect(AC.destination);o.start(t);o.stop(t+.18);
+    });
+  }catch{}
+}
+
+/* 音箱"正在播放"时实时合成环境音乐 —— 让听觉反馈名副其实 [HCI:多模态-听觉输出]
+   引擎：四声部铺底和弦(每音 ±3 音分双振荡更厚) 会随和弦进行不断换声 +
+        极慢颤音(呼吸感) + 低音声部(拨弦律动) + 旋律点缀音(钟琴式快起慢落)。
+   每个出声场景给出"和弦进行 / 音阶 / 速度 / 音色 / 明暗"一整套参数，
+   两种场景因此具有截然不同的音乐性格，不再是同一段单调 drone。[HCI:认知负荷-情景化反馈] */
+let music=null, musicPlaying=false, musicCfg=null, progStep=0; // music={master,filt,voices,bass,bassG}
+
+/* 场景 → 音乐配置：仅这些场景出声，其余静音 */
+const SCENE_MUSIC={
+  /* 晨起 · 「明快晨曲」：G 大调 I-V-vi-IV，中高音区、明亮通透、轻快明媚的竖琴式点缀，无低音 */
+  morning:{
+    label:'明快晨曲', wave:'triangle', bright:1750, gain:1.0, bar:3.0, arp:true, arpGap:[.42,1.0], bass:false,
+    prog:[ [196.00,246.94,293.66,392.00],  // G  (G3 B3 D4 G4)
+           [146.83,220.00,293.66,369.99],  // D  (D3 A3 D4 F#4)
+           [164.81,196.00,246.94,329.63],  // Em (E3 G3 B3 E4)
+           [130.81,196.00,261.63,329.63] ],// C  (C3 G3 C4 E4)
+    bassNotes:[],
+    scale:[392.00,440.00,493.88,587.33,659.25,783.99,880.00,987.77], // G 大调五声(中高音区,顶端加亮)
+  },
+  /* 回家 · 「暖夜慢歌」：Am7-Dm7-G-Cmaj7，低音区、速度很慢、暖而暗、低音拨弦律动 */
+  home:{
+    label:'暖夜慢歌', wave:'sine', bright:760, gain:.72, bar:5.6, arp:true, arpGap:[2.0,3.8], bass:true,
+    prog:[ [110.00,164.81,196.00,261.63],  // Am7   (A2 E3 G3 C4)
+           [146.83,174.61,220.00,261.63],  // Dm7   (D3 F3 A3 C4)
+           [ 98.00,146.83,196.00,246.94],  // G     (G2 D3 G3 B3)
+           [130.81,164.81,196.00,246.94] ],// Cmaj7 (C3 E3 G3 B3)
+    bassNotes:[55.00,73.42,49.00,65.41],   // A1 D2 G1 C2
+    scale:[220.00,261.63,329.63,392.00,440.00,523.25], // A 小调五声(中音区)
+  },
+};
+
+function ensureMusic(){
+  if(music)return;
+  AC=AC||new(window.AudioContext||window.webkitAudioContext)();
+  const master=AC.createGain(); master.gain.value=0; master.connect(AC.destination);
+  const filt=AC.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=1000; filt.Q.value=.6; filt.connect(master);
+  // 极慢颤音 VCA：让长音"呼吸"，摆脱死板 drone
+  const trem=AC.createGain(); trem.gain.value=.82; trem.connect(filt);
+  const lfo=AC.createOscillator(); lfo.type='sine'; lfo.frequency.value=.12;
+  const lfoG=AC.createGain(); lfoG.gain.value=.18; lfo.connect(lfoG).connect(trem.gain); lfo.start();
+  // 四个铺底声部：每部两支 ±3 音分微失谐振荡叠加，更厚更暖；频率随和弦进行滑变(换声不爆音)
+  const voices=[];
+  for(let i=0;i<4;i++){
+    const vg=AC.createGain(); vg.gain.value=.085; vg.connect(trem);
+    const oscs=[-3,3].map(det=>{const o=AC.createOscillator();o.type='sine';o.frequency.value=220;o.detune.value=det;o.connect(vg);o.start();return o;});
+    voices.push({oscs,vg});
+  }
+  // 低音声部：直入滤波器(不受颤音影响)，每次换和弦给一个柔和拨弦包络
+  const bassG=AC.createGain(); bassG.gain.value=0; bassG.connect(filt);
+  const bass=AC.createOscillator(); bass.type='sine'; bass.frequency.value=55; bass.connect(bassG); bass.start();
+  music={master,filt,voices,bass,bassG};
+  progStep=0; scheduleChord(); scheduleArp();
+}
+/* 换和弦：四声部滑到目标音；若该风格带低音，则给低音一记拨弦 [HCI:反馈-听觉律动] */
+function applyChord(){
+  if(!music||!musicCfg)return;
+  const chord=musicCfg.prog[progStep%musicCfg.prog.length], t=AC.currentTime;
+  music.voices.forEach((v,i)=>{
+    const f=chord[i%chord.length];
+    v.oscs.forEach(o=>o.frequency.setTargetAtTime(f,t,.35)); // 滑音过渡，避免硬切
+  });
+  if(musicCfg.bass && musicCfg.bassNotes.length){
+    music.bass.frequency.setTargetAtTime(musicCfg.bassNotes[progStep%musicCfg.bassNotes.length],t,.18);
+    music.bassG.gain.cancelScheduledValues(t);
+    music.bassG.gain.setValueAtTime(Math.max(.0001,music.bassG.gain.value),t);
+    music.bassG.gain.linearRampToValueAtTime(.12,t+.08);                 // 拨弦起音
+    music.bassG.gain.exponentialRampToValueAtTime(.015,t+musicCfg.bar*0.9); // 缓慢衰减
+  }
+}
+/* 和弦进行循环：按当前风格的小节时长推进 */
+function scheduleChord(){
+  if(!music)return;
+  if(musicPlaying&&musicCfg){ applyChord(); progStep++; }
+  setTimeout(scheduleChord, ((musicCfg&&musicCfg.bar)||4)*1000);
+}
+/* 旋律点缀音：取当前风格音阶随机一音，钟琴式快起慢落；间隔与时值随风格不同 */
+function arpNote(){
+  if(!music||!musicPlaying||!musicCfg||!musicCfg.arp)return;
+  const sc=musicCfg.scale;
+  const o=AC.createOscillator(); o.type=musicCfg.wave; o.frequency.value=sc[Math.floor(Math.random()*sc.length)];
+  const g=AC.createGain(), t=AC.currentTime;
+  const peak=musicCfg.wave==='triangle'?.34:.40, dur=musicCfg.bass?2.2:1.7;
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(peak,t+.02);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(music.master); o.start(t); o.stop(t+dur+.1);
+}
+function scheduleArp(){
+  if(!music)return;
+  arpNote();
+  const gap=(musicCfg&&musicCfg.arpGap)||[1.7,3.6];
+  setTimeout(scheduleArp, (gap[0]+Math.random()*(gap[1]-gap[0]))*1000);
+}
+function applyMusic(){
+  try{
+    const m=SCENE_MUSIC[cfg.scene];                        // 仅这两个场景出声，与音箱开关、提示音开关均无关
+    const on=!!m;
+    musicPlaying=on;
+    if(on){
+      ensureMusic(); if(AC.state==='suspended') AC.resume();
+      const changed = musicCfg!==m; musicCfg=m;
+      music.filt.frequency.setTargetAtTime(m.bright, AC.currentTime, 0.5); // 音色明暗
+      if(changed){ progStep=0; applyChord(); }             // 切换风格立即换成新和弦
+      // 音量：有开着的音箱则跟随其音量滑块，否则用默认值（场景本身即可出声）
+      const spk=S.devices.filter(d=>d.type==='speaker'&&d.on);
+      const vol = spk.length ? Math.max(...spk.map(d=>d.vol||0))/100 : 0.5;
+      music.master.gain.setTargetAtTime((0.03+0.08*vol)*m.gain, AC.currentTime, 0.4);
+    }else if(music){
+      music.master.gain.setTargetAtTime(0, AC.currentTime, 0.4);
+      music.bassG.gain.setTargetAtTime(0, AC.currentTime, 0.4);
+    }
+  }catch{}
+}
+
+/* ==========================================================================
+   渲染
+   ========================================================================== */
+const $=id=>document.getElementById(id);
+
+function renderRooms(){
+  $('rooms').innerHTML=S.rooms.map(r=>{
+    const cnt=S.devices.filter(d=>d.room===r.id&&d.on).length;
+    return `<button class="room ${cfg.room===r.id?'active':''}" data-room="${r.id}" title="${r.name}：${cnt} 个设备运行中">
+      <span class="ic">${r.ic}</span>${r.name}<span class="n ${cnt?'lit':''}" title="运行中的设备数">${cnt}</span></button>`;
+  }).join('');
+  $('rooms').querySelectorAll('.room').forEach(b=>b.onclick=()=>{cfg.room=b.dataset.room;persist();renderAll();beep('tick');toggleMenu(false)});
+}
+
+function renderScenes(){
+  $('scenes').innerHTML=SCENES.map(sc=>`
+    <button class="scene ${cfg.scene===sc.id?'on':''}" data-scene="${sc.id}" title="作用范围：${sc.area}">
+      <span class="se">${sc.em}</span><span class="st">${sc.name}<span class="area">${sc.area}</span></span><span class="sd">${sc.desc}</span>
+    </button>`).join('');
+  $('scenes').querySelectorAll('.scene').forEach(b=>b.onclick=()=>runScene(b.dataset.scene));
+}
+
+function runScene(id){
+  const sc=SCENES.find(x=>x.id===id);if(!sc)return;
+  pushUndo();
+  sc.apply(S); cfg.scene=id; persist(); beep('scene');
+  renderAll(); flashScenes();
+  const mus=SCENE_MUSIC[id];
+  toast(`${sc.em} 已切换到「${sc.name}」模式${mus?` · 🎵 ${mus.label}`:''}`,sc.em,{label:'撤销',fn:doUndo});
+}
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function flashScenes(){ /* 编排时的轻微错峰动效，强化"多设备联动"感 [HCI:反馈] */
+  if(reduceMotion)return;
+  $('devices').querySelectorAll('.device').forEach((d,i)=>{
+    d.animate([{transform:'scale(.97)',opacity:.6},{transform:'scale(1)',opacity:1}],{duration:380,delay:i*45,easing:'cubic-bezier(.34,1.2,.4,1)'});
+  });
+}
+
+function renderDevices(){
+  const room=S.rooms.find(r=>r.id===cfg.room);
+  $('roomTitle').textContent=room.name+' · 设备';
+  const list=S.devices.filter(d=>d.room===cfg.room);
+  const wrap=$('devices'); wrap.innerHTML='';
+  list.forEach(d=>wrap.appendChild(buildDevice(d)));
+  if(!list.length) wrap.innerHTML='<p style="color:var(--text-3)">该房间暂无设备</p>';
+}
+
+/* 设备状态文字：初始渲染与滑块就地更新共用，保证一致 [HCI:一致性] */
+function devState(d){
+  if(!d.on)return '已关闭';
+  if(d.type==='light')  return `亮度 ${d.bright}% · ${LIGHT_COLORS[d.color].name}`;
+  if(d.type==='curtain')return `开启 ${d.open}%`;
+  if(d.type==='speaker')return `音量 ${d.vol}% · 正在播放`;
+  return '运行中';
+}
+
+function buildDevice(d){
+  const el=document.createElement('div');
+  el.className='device glass'+(d.on?' on':'');
+  if(d.type==='ac') return buildThermo(d,el);
+
+  let state=devState(d), body='';
+  if(d.type==='light'){
+    body=`<div class="slider-row"><div class="v"><span>亮度</span><span>${d.bright}%</span></div>
+      <input type="range" min="1" max="100" value="${d.bright}" ${d.on?'':'disabled'} data-k="bright"></div>
+      <div class="swatches" role="group" aria-label="灯光颜色">${LIGHT_COLORS.map((c,i)=>`<button class="swatch ${i===d.color?'sel':''}" data-color="${i}" style="background:${c.v}" title="${c.name}" aria-label="${c.name}${i===d.color?'（当前）':''}" aria-pressed="${i===d.color}"></button>`).join('')}</div>`;
+  }else if(d.type==='curtain'){
+    const off=50-d.open/2;
+    state=d.on?`开启 ${d.open}%`:'已关闭';
+    body=`<div class="curtain-vis"><div class="panel left" style="transform:translateX(-${d.open}%)"></div><div class="panel right" style="transform:translateX(${d.open}%)"></div></div>
+      <div class="slider-row"><div class="v"><span>开合度</span><span>${d.open}%</span></div>
+      <input type="range" min="0" max="100" value="${d.open}" ${d.on?'':'disabled'} data-k="open"></div>`;
+  }else if(d.type==='speaker'){
+    state=d.on?`音量 ${d.vol}% · 正在播放`:'已关闭';
+    body=`<div class="slider-row"><div class="v"><span>音量</span><span>${d.vol}%</span></div>
+      <input type="range" min="0" max="100" value="${d.vol}" ${d.on?'':'disabled'} data-k="vol"></div>`;
+  }else{ // tv / hood 等纯开关设备
+    state=d.on?'运行中':'已关闭';
+  }
+
+  el.innerHTML=`<div class="dev-head"><div class="dev-icon">${d.icon}</div>
+      <button class="switch ${d.on?'on':''}" role="switch" aria-checked="${d.on}" aria-label="${d.name}开关"></button></div>
+    <div class="dev-name">${d.name}</div><div class="dev-state">${state}</div>${body}`;
+
+  el.querySelector('.switch').onclick=e=>{e.stopPropagation();d.on=!d.on;persist();beep(d.on?'on':'off');clearScene();renderAll();};
+  // 整卡可点切换（滑块/色卡/开关等交互控件除外）——大热区，与"点击卡片开关"提示一致 [HCI:Fitts][HCI:一致性]
+  el.onclick=e=>{if(e.target.closest('input,.swatch,.switch,button'))return;d.on=!d.on;persist();beep(d.on?'on':'off');clearScene();renderAll();};
+  el.querySelectorAll('input[type=range]').forEach(r=>r.oninput=()=>{
+    d[r.dataset.k]=+r.value; persist(); clearScene();
+    // 就地更新数值/视觉，绝不重建 DOM —— 否则拖动中的滑块会被销毁而中断 [HCI:直接操纵-连续反馈]
+    const row=r.closest('.slider-row'); if(row) row.querySelector('.v span:last-child').textContent=r.value+'%';
+    if(d.type==='curtain'){
+      el.querySelector('.panel.left').style.transform=`translateX(-${d.open}%)`;
+      el.querySelector('.panel.right').style.transform=`translateX(${d.open}%)`;
+    }
+    el.querySelector('.dev-state').textContent=devState(d);
+    renderStatus(); applyAmbient(); if(d.type==='speaker')applyMusic();
+  });
+  el.querySelectorAll('.swatch').forEach(s=>s.onclick=()=>{d.color=+s.dataset.color;if(!d.on)d.on=true;persist();beep('tick');clearScene();renderAll();});
+  return el;
+}
+
+/* 空调温控卡（含可拖拽圆形旋钮）[HCI:直接操纵][HCI:Fitts] */
+function buildThermo(d,el){
+  el.className='device glass thermo'+(d.on?' on':'');
+  const min=16,max=30, pct=(d.temp-min)/(max-min);
+  const C=2*Math.PI*70, arc=C*0.75; // 270° 表盘
+  el.innerHTML=`
+    <div class="dial" id="dial-${d.id}" tabindex="0" role="slider"
+         aria-label="${d.name}温度调节" aria-valuemin="${min}" aria-valuemax="${max}"
+         aria-valuenow="${d.temp}" aria-valuetext="${d.temp}摄氏度">
+      <svg width="180" height="180" viewBox="0 0 180 180">
+        <circle class="track" cx="90" cy="90" r="70" stroke-dasharray="${arc} ${C}"/>
+        <circle class="prog" cx="90" cy="90" r="70" stroke="${tempColor(d.temp)}" stroke-dasharray="${arc*pct} ${C}"/>
+      </svg>
+      <div class="center"><div class="setlabel">设定温度</div><div class="temp">${d.temp}<sup>°C</sup></div><div class="mode">${d.on?modeLabel(d.mode):'已关闭'}</div></div>
+      <div class="handle" id="handle-${d.id}"></div>
+    </div>
+    <div class="thermo-info">
+      <div class="dev-head" style="margin-bottom:8px"><div class="dev-icon">${d.icon}</div>
+        <button class="switch ${d.on?'on':''}" role="switch" aria-checked="${d.on}" aria-label="${d.name}开关"></button></div>
+      <h3>${d.name}</h3>
+      <p>拖动旋钮或使用 +/- 调节温度。当前模式下预计每小时耗电约 ${(d.on?(d.mode==='cool'?0.9:1.1):0).toFixed(1)} 度。</p>
+      <div class="modebar">
+        <button class="mbtn ${d.mode==='cool'?'on':''}" data-mode="cool">❄️ 制冷</button>
+        <button class="mbtn ${d.mode==='heat'?'on':''}" data-mode="heat">🔥 制热</button>
+        <button class="mbtn ${d.mode==='auto'?'on':''}" data-mode="auto">🌀 自动</button>
+        <button class="mbtn" data-step="-1">－</button>
+        <button class="mbtn" data-step="1">＋</button>
+      </div>
+    </div>`;
+  el.querySelector('.switch').onclick=e=>{e.stopPropagation();d.on=!d.on;persist();beep(d.on?'on':'off');clearScene();renderAll();};
+  // 点击卡片空白处开关（旋钮/模式按钮/开关除外，避免与拖拽调温冲突）[HCI:一致性]
+  el.onclick=e=>{if(e.target.closest('.dial,button,.switch'))return;d.on=!d.on;persist();beep(d.on?'on':'off');clearScene();renderAll();};
+  el.querySelectorAll('.mbtn[data-mode]').forEach(b=>b.onclick=()=>{d.mode=b.dataset.mode;if(!d.on)d.on=true;persist();beep('tick');clearScene();renderAll();});
+  el.querySelectorAll('.mbtn[data-step]').forEach(b=>b.onclick=()=>{if(!d.on)return;d.temp=Math.max(min,Math.min(max,d.temp+ +b.dataset.step));persist();beep('tick');clearScene();renderAll();});
+  const dialEl=el.querySelector('.dial');
+  // 方向键 ±1°，旋钮可纯键盘操作 [HCI:可达性]
+  dialEl.addEventListener('keydown',e=>{
+    if(!d.on)return;
+    const step=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:(e.key==='ArrowDown'||e.key==='ArrowLeft')?-1:0;
+    if(!step)return;
+    e.preventDefault();
+    d.temp=Math.max(min,Math.min(max,d.temp+step));
+    beep('tick');clearScene();persist();updateThermoLive(d);renderStatus();renderRooms();
+  });
+  requestAnimationFrame(()=>positionHandle(d));
+  // 直接把监听绑到当前 dial 元素（此时尚未插入文档，不能用 getElementById）[HCI:直接操纵]
+  enableDialDrag(d,min,max,dialEl);
+  return el;
+}
+function modeLabel(m){return{cool:'制冷中',heat:'制热中',auto:'自动'}[m]||'运行'}
+function tempColor(t){return t<=22?'#4fc3f7':t<=26?'#34d399':'#ffb347'}
+function positionHandle(d){
+  const dial=$('dial-'+d.id),h=$('handle-'+d.id);if(!dial||!h)return;
+  const min=16,max=30,pct=(d.temp-min)/(max-min);
+  const ang=(135+pct*270)*Math.PI/180, R=70, cx=90,cy=90;
+  h.style.left=(cx+R*Math.cos(ang)-9)+'px';
+  h.style.top=(cy+R*Math.sin(ang)-9)+'px';
+}
+/* 旋钮拖拽：把指针角度反解为温度 [HCI:直接操纵]
+   注意：window 上的 move/up 监听只在模块加载时绑定一次，
+   用 activeDial 记录当前被拖拽的旋钮，避免每次重渲染重复绑定造成监听器泄漏。 */
+let activeDial=null; // {d,min,max,dial}
+function dialCalc(e){
+  if(!activeDial)return;
+  const {d,min,max,dial}=activeDial;
+  if(!d.on)return;
+  const r=dial.getBoundingClientRect();
+  const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left-r.width/2;
+  const y=(e.touches?e.touches[0].clientY:e.clientY)-r.top-r.height/2;
+  let a=Math.atan2(y,x)*180/Math.PI; a=(a-135+360)%360;
+  if(a>270){a=a>315?0:270;} // 限制在 270° 弧内
+  const t=Math.round(min+(a/270)*(max-min));
+  if(t!==d.temp){d.temp=Math.max(min,Math.min(max,t));beep('tick');clearScene();persist();updateThermoLive(d);}
+}
+function enableDialDrag(d,min,max,dial){
+  if(!dial)return;
+  const down=e=>{if(!d.on)return;activeDial={d,min,max,dial};dialCalc(e);e.preventDefault();};
+  dial.addEventListener('mousedown',down);
+  dial.addEventListener('touchstart',down,{passive:false});
+}
+// 全局只绑定一次
+window.addEventListener('mousemove',dialCalc);
+window.addEventListener('touchmove',e=>{if(activeDial){dialCalc(e);e.preventDefault();}},{passive:false});
+function endDial(){if(activeDial){activeDial=null;renderStatus();renderRooms();}}
+window.addEventListener('mouseup',endDial);
+window.addEventListener('touchend',endDial);
+/* 拖拽中只更新旋钮局部，避免整页重绘卡顿 [HCI:反馈-即时性<400ms] */
+function updateThermoLive(d){
+  const card=$('dial-'+d.id);if(!card)return;
+  const min=16,max=30,pct=(d.temp-min)/(max-min),C=2*Math.PI*70,arc=C*0.75;
+  card.querySelector('.prog').setAttribute('stroke-dasharray',`${arc*pct} ${C}`);
+  card.querySelector('.prog').setAttribute('stroke',tempColor(d.temp));
+  card.querySelector('.temp').innerHTML=`${d.temp}<sup>°C</sup>`;
+  card.setAttribute('aria-valuenow',d.temp);
+  card.setAttribute('aria-valuetext',d.temp+'摄氏度');
+  positionHandle(d);
+}
+
+
+/* ==========================================================================
+   顶部状态 + 环境光联动
+   ========================================================================== */
+/* 单设备功耗（kW）—— 全局唯一来源，状态栏/曲线/房间占比共用，保证一致 [HCI:一致性]
+   灯具含 0.02kW 基础功率（灯座/驱动）+ 调光部分，确保"开灯必有可见增量" */
+function devPower(d){
+  if(!d.on)return 0;
+  switch(d.type){
+    case 'ac':      return d.mode==='heat'?1.1:0.9;
+    case 'light':   return 0.02 + d.bright/100*0.05;
+    case 'tv':      return 0.15;
+    case 'speaker': return 0.03;
+    default:        return 0.04;
+  }
+}
+function totalPower(list){return (list||S.devices).reduce((s,d)=>s+devPower(d),0);}
+
+function renderStatus(){
+  const onCount=S.devices.filter(d=>d.on).length;
+  // 室内温度=实测值（随热惯性缓慢逼近设定值），切场景不会瞬间跳变
+  $('pillTemp').textContent=S.indoor.toFixed(1)+'°';
+  $('pillPower').textContent=totalPower().toFixed(2)+'kW';   // 两位小数：开一盏灯也看得到变化
+  $('pillOn').textContent=onCount;
+}
+/* 室内温度目标：有空调取其设定均值，否则趋向室外基线 28° [HCI:真实匹配] */
+function indoorTarget(){
+  const acs=S.devices.filter(d=>d.type==='ac'&&d.on);
+  return acs.length? acs.reduce((a,b)=>a+b.temp,0)/acs.length : 28;
+}
+/* 每秒一步，缓慢逼近目标，模拟热惯性 [HCI:真实世界匹配] */
+function driftIndoor(){
+  const tgt=indoorTarget();
+  if(Math.abs(tgt-S.indoor)<0.05) S.indoor=tgt;
+  else S.indoor += (tgt-S.indoor)*0.08;
+}
+/* 环境光：取当前房间已开灯的颜色，染到背景 [HCI:反馈-环境/氛围] */
+function applyAmbient(){
+  const lit=S.devices.find(d=>d.type==='light'&&d.on&&d.room===cfg.room)||S.devices.find(d=>d.type==='light'&&d.on);
+  const root=document.documentElement.style;
+  if(lit){const c=LIGHT_COLORS[lit.color];root.setProperty('--amb',c.amb);
+    root.setProperty('--amb-x',(20+lit.bright*0.4)+'%');}
+  else root.setProperty('--amb','rgba(60,70,110,.18)');
+}
+
+/* ==========================================================================
+   语音 / 文本指令解析（模拟 NLP）[HCI:多模态][HCI:自然交互]
+   ========================================================================== */
+function handleCommand(raw){
+  const txt=(raw||'').trim();if(!txt)return;
+  beep('tick');
+  const clear=()=>{$('voiceInput').value='';};
+  const done=(msg,em)=>{clearScene();persist();renderAll();toast(msg,em);clear();};
+  // 工具：在指定房间/当前房间/全局里找某类设备
+  const pick=(type,room)=>(room&&S.devices.find(d=>d.type===type&&d.room===room.id))
+    ||S.devices.find(d=>d.type===type&&d.room===cfg.room)||S.devices.find(d=>d.type===type);
+
+  const room=S.rooms.find(r=>txt.includes(r.name));
+  const on=/开|打开|启动|开启|亮起|播放/.test(txt)&&!/关/.test(txt);
+  const off=/关|关闭|停止|关掉|熄灭|静音/.test(txt);
+  const num=re=>{const m=txt.match(re);return m?+(m.find((g,i)=>i>0&&g!=null)):null;};
+
+  // 0) 帮助意图
+  if(/帮助|你能|能做什么|怎么用|能干|使用说明|有什么功能|不会用/.test(txt)){
+    toast('我能：开关设备 · 调温度/亮度/音量 · 开合窗帘 · 切换情景（回家/观影/睡眠/晨起/离家）· 全屋开关。例：「卧室空调调到24度」「客厅灯暗一点」「音量小一点」「窗帘开一半」「全部关闭」「观影模式」','💡');
+    clear();return;
+  }
+  // 1) 情景模式（含同音词/口语别名容错）
+  const sc=matchScene(txt);
+  if(sc&&(/模式|情景/.test(txt)||txt.length<=6)){runScene(sc.id);clear();return;}
+
+  // 2) 全屋 / 全部 开关
+  if(/全部|所有|全屋|整个家|都/.test(txt)&&(on||off)){
+    const t=/灯/.test(txt)?'light':/窗帘/.test(txt)?'curtain':null;
+    S.devices.forEach(d=>{
+      if(t&&d.type!==t)return; if(room&&d.room!==room.id)return;
+      d.on=on; if(d.type==='curtain')d.open=on?100:0;
+    });
+    done(`已${on?'打开':'关闭'}${room?room.name:'全屋'}${t==='light'?'所有灯':t==='curtain'?'所有窗帘':'所有设备'}`,on?'✅':'⏹️');return;
+  }
+  // 3) 温度（绝对 / 相对 / 极值）—— 仅"数字+度"或温控词触发，避免"亮度"的"度"误判
+  if(/温度|空调|冷气|热|冷|暖|凉/.test(txt)||/\d\s*度/.test(txt)){
+    const ac=pick('ac',room);
+    if(ac){
+      let t=num(/(\d{1,2})\s*度|温度\D*?(\d{1,2})|调到\D*?(\d{1,2})/);
+      if(t==null){
+        if(/最高|最热|最暖/.test(txt))t=30; else if(/最低|最冷|最凉/.test(txt))t=16;
+        else if(/升高|调高|高一点|高点|暖一点|热一点|加/.test(txt))t=ac.temp+1;
+        else if(/降低|调低|低一点|低点|冷一点|凉一点|减/.test(txt))t=ac.temp-1;
+      }
+      if(t!=null){t=Math.max(16,Math.min(30,t));ac.on=true;ac.temp=t;done(`已将「${roomOf(ac)}空调」设为 ${t}°C`,'🌡️');return;}
+    }
+  }
+  // 4) 亮度（绝对 / 相对 / 极值）
+  if(/亮度|调亮|调暗|亮一点|暗一点|亮点|暗点|最亮|最暗/.test(txt)||(/灯|亮/.test(txt)&&/(\d{1,3})\s*%/.test(txt))){
+    const lt=pick('light',room);
+    if(lt){
+      let b=num(/亮度\D*?(\d{1,3})|(\d{1,3})\s*%/);
+      if(b==null){
+        if(/最亮/.test(txt))b=100; else if(/最暗/.test(txt))b=5;
+        else if(/调亮|亮一点|亮点|亮些/.test(txt))b=(lt.bright||50)+15;
+        else if(/调暗|暗一点|暗点|暗些/.test(txt))b=(lt.bright||50)-15;
+      }
+      if(b!=null){b=Math.max(1,Math.min(100,b));lt.on=true;lt.bright=b;done(`已将「${roomOf(lt)}${lt.name}」亮度设为 ${b}%`,'💡');return;}
+    }
+  }
+  // 5) 音量
+  if(/音量|声音|大声|小声|静音/.test(txt)){
+    const sp=pick('speaker',room);
+    if(sp){
+      let v=num(/音量\D*?(\d{1,3})|(\d{1,3})\s*%/);
+      if(v==null){
+        if(/静音/.test(txt))v=0; else if(/最大|大声/.test(txt))v=(sp.vol||40)+20;
+        else if(/最小|小声/.test(txt))v=(sp.vol||40)-20;
+      }
+      if(v!=null){v=Math.max(0,Math.min(100,v));sp.on=v>0;sp.vol=v;done(`已将「${roomOf(sp)}${sp.name}」音量设为 ${v}%`,'🔈');return;}
+    }
+  }
+  // 6) 窗帘开合度
+  if(/窗帘/.test(txt)){
+    const cu=pick('curtain',room);
+    if(cu){
+      let o=/一半/.test(txt)?50:num(/(\d{1,3})\s*%/);
+      if(o==null){if(on)o=100;else if(off)o=0;}
+      if(o!=null){o=Math.max(0,Math.min(100,o));cu.on=o>0;cu.open=o;done(`已将「${roomOf(cu)}窗帘」开合度设为 ${o}%`,'🪟');return;}
+    }
+  }
+  // 7) 单设备开关
+  const typeMap={灯光:'light',台灯:'light',吊灯:'light',吸顶灯:'light',床头灯:'light',灯:'light',
+    窗帘:'curtain',电视机:'tv',电视:'tv',油烟机:'tv',抽油烟机:'tv',空调:'ac',冷气:'ac',音箱:'speaker',音乐:'speaker'};
+  for(const kw in typeMap){if(txt.includes(kw)){
+    const m=pick(typeMap[kw],room);
+    if(m&&(on||off)){m.on=on;if(m.type==='curtain')m.open=on?100:0;done(`已${on?'打开':'关闭'}「${roomOf(m)}${m.name}」`,on?'✅':'⏹️');return;}
+    break;
+  }}
+  // 8) 兜底（给方向，而非空拒绝）[HCI:容错-帮助性错误]
+  beep('err');
+  toast('没太听懂～ 试试「打开客厅灯」「卧室空调调到24度」「灯暗一点」「全部关闭」「观影模式」，或说「帮助」','❓');
+}
+function roomOf(d){return (S.rooms.find(r=>r.id===d.room)||{}).name||''}
+function clearScene(){cfg.scene=null}
+
+/* ==========================================================================
+   Toast
+   ========================================================================== */
+function toast(msg,em='🔔',action=null){
+  const el=document.createElement('div');el.className='toast glass';
+  el.innerHTML=`<span class="te">${em}</span><span style="flex:1">${msg}</span>`;
+  if(action){
+    const b=document.createElement('button');b.className='toast-act';b.textContent=action.label;
+    b.onclick=()=>{action.fn();el.classList.add('out');setTimeout(()=>el.remove(),300);};
+    el.appendChild(b);
+  }
+  $('toasts').appendChild(el);
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),300)},action?5200:2600);
+}
+
+/* 撤销：操作前快照整份状态，给"一键改多设备"提供后悔药 [HCI:Nielsen-用户控制与自由] */
+let undoSnapshot=null;
+function pushUndo(){undoSnapshot={s:JSON.stringify(S),scene:cfg.scene};}
+function doUndo(){
+  if(!undoSnapshot)return;
+  S=JSON.parse(undoSnapshot.s);cfg.scene=undoSnapshot.scene;undoSnapshot=null;
+  persist();renderAll();beep('off');toast('已撤销上一步操作','↩️');
+}
+
+/* ==========================================================================
+   能耗趋势图表 —— 数据可视化 [HCI:信息可视化][HCI:认知负荷-预注意]
+   依据当前设备合成 24h 功耗曲线，当前小时取实时功耗，一图传达全天用电。
+   ========================================================================== */
+function currentPower(){return totalPower();}
+function renderChart(){
+  // 典型家庭一天的用电基线（早晚双高峰）
+  const base=[.4,.3,.3,.3,.3,.5,1.2,1.6,1.1,.7,.6,.8,1.0,.7,.6,.7,1.0,1.6,2.1,2.4,2.2,1.8,1.2,.7];
+  const now=new Date(),h=now.getHours();
+  const data=base.map((v,i)=> i===h ? Math.max(v,+currentPower().toFixed(2)) : +(v*(0.9+(i*37%13)/40)).toFixed(2));
+  const W=520,H=160,pl=34,pr=10,pt=12,pb=22, max=Math.max(3,...data);
+  const X=i=>pl+(i/23)*(W-pl-pr), Y=v=>pt+(1-v/max)*(H-pt-pb);
+  // 实际用电只到"当前小时"，之后是预测——分两段绘制，避免把未来画成已发生 [HCI:信息可视化-诚实表达]
+  let linePast='',lineFuture='',area=`M${X(0)} ${Y(0)} `;
+  data.forEach((v,i)=>{
+    const x=X(i).toFixed(1),y=Y(v).toFixed(1);
+    if(i<=h){linePast+=(i?'L':'M')+x+' '+y+' '; area+='L'+x+' '+y+' ';}
+    if(i>=h){lineFuture+=(i===h?'M':'L')+x+' '+y+' ';}   // 从当前小时起接续画虚线
+  });
+  area+=`L${X(h)} ${Y(0)} Z`;   // 填充区只覆盖已发生时段
+  let grid='';for(let g=0;g<=3;g++){const y=pt+g/3*(H-pt-pb);grid+=`<line class="grid" x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}"/><text class="axis" x="2" y="${y+3}">${(max*(1-g/3)).toFixed(1)}</text>`;}
+  let xlab='';[0,6,12,18,23].forEach(i=>xlab+=`<text class="axis" x="${X(i)}" y="${H-6}" text-anchor="middle">${i}时</text>`);
+  $('chart').innerHTML=`
+    <defs><linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5b8cff" stop-opacity=".35"/><stop offset="100%" stop-color="#5b8cff" stop-opacity="0"/></linearGradient></defs>
+    ${grid}${xlab}
+    <path class="area" d="${area}"/>
+    <path class="line" d="${linePast}"/>
+    <path class="line future" d="${lineFuture}"/>
+    <line class="nowline" x1="${X(h)}" y1="${pt}" x2="${X(h)}" y2="${H-pb}"/>
+    <text class="axis" x="${X(h)}" y="${pt-2}" text-anchor="middle" fill="var(--accent2)">现在</text>
+    <circle class="now" cx="${X(h)}" cy="${Y(data[h])}" r="4.5"/>`;
+  // 各房间当前功耗占比条
+  const byRoom=S.rooms.map(r=>({name:r.name,p:totalPower(S.devices.filter(d=>d.room===r.id))}));
+  const pmax=Math.max(0.1,...byRoom.map(r=>r.p));
+  $('roomBars').innerHTML=byRoom.map(r=>`<div class="rbar"><span>${r.name}</span>
+    <span class="track"><span class="fill" style="width:${r.p/pmax*100}%"></span></span>
+    <span class="val">${r.p.toFixed(2)}kW</span></div>`).join('');
+}
+
+/* ==========================================================================
+   定时自动化 —— 条件→动作映射 [HCI:自动化][HCI:系统主动性]
+   ========================================================================== */
+const ACTIONS={
+  'lights-off':{label:'关闭所有灯',run:()=>S.devices.forEach(d=>{if(d.type==='light')d.on=false})},
+  'lights-on' :{label:'打开所有灯',run:()=>S.devices.forEach(d=>{if(d.type==='light')d.on=true})},
+  'curtain-close':{label:'关闭所有窗帘',run:()=>S.devices.forEach(d=>{if(d.type==='curtain'){d.on=false;d.open=0;}})},
+  'curtain-open' :{label:'打开所有窗帘',run:()=>S.devices.forEach(d=>{if(d.type==='curtain'){d.on=true;d.open=100;}})},
+  'scene-sleep'  :{label:'进入睡眠模式',run:()=>SCENES.find(s=>s.id==='sleep').apply(S)},
+  'scene-morning':{label:'进入晨起模式',run:()=>SCENES.find(s=>s.id==='morning').apply(S)},
+  'scene-away'   :{label:'进入离家模式',run:()=>SCENES.find(s=>s.id==='away').apply(S)},
+};
+function renderAutomation(){
+  const rules=[...(S.rules||[])].sort((a,b)=>a.time.localeCompare(b.time));
+  $('rules').innerHTML=rules.length?rules.map(r=>`
+    <div class="rule" data-id="${r.id}">
+      <span class="rt">${r.time}</span>
+      <span class="rl">${ACTIONS[r.action]?.label||r.action}<small>每天 ${r.time} 自动执行</small></span>
+      <button class="sw ${r.on?'on':''}" role="switch" aria-checked="${r.on}" data-act="toggle" title="启用/停用" aria-label="启用或停用该规则"></button>
+      <button class="del" data-act="del" title="删除">✕</button>
+    </div>`).join(''):'<p style="color:var(--text-3);font-size:13px;padding:8px 0">暂无规则，添加一条试试 👇</p>';
+  $('rules').querySelectorAll('.rule').forEach(el=>{
+    const r=S.rules.find(x=>x.id===el.dataset.id);
+    el.querySelector('[data-act=toggle]').onclick=()=>{r.on=!r.on;persist();renderAutomation();beep('tick')};
+    el.querySelector('[data-act=del]').onclick=()=>{S.rules=S.rules.filter(x=>x.id!==r.id);persist();renderAutomation();beep('off')};
+  });
+}
+let lastAutoMin=null;
+function checkAutomation(){
+  const now=new Date(),hm=now.toTimeString().slice(0,5);
+  if(hm===lastAutoMin)return; lastAutoMin=hm;
+  (S.rules||[]).filter(r=>r.on&&r.time===hm).forEach(r=>{
+    const a=ACTIONS[r.action];if(!a)return;a.run(S);cfg.scene=null;persist();beep('scene');
+    renderAll();toast(`⏰ 定时触发：${a.label}`,'🤖');
+  });
+}
+$('ruleAdd').onclick=()=>{
+  const time=$('ruleTime').value, action=$('ruleAction').value;
+  if(!time)return beep('err');
+  S.rules=S.rules||[];S.rules.push({id:'r'+Date.now().toString(36),time,action,on:true});
+  persist();renderAutomation();beep('on');toast('已添加定时规则 ✓','⏰');
+};
+
+/* ==========================================================================
+   新手引导 —— 学习性/帮助文档 [HCI:Nielsen-帮助][HCI:渐进引导]
+   ========================================================================== */
+const ONB_STEPS=[
+  {sel:null,em:'👋',title:'欢迎使用 智家 AINO',text:'这是一个智能家居控制中心。30 秒带你了解核心操作，之后随时可在左下角「新手引导」重看。'},
+  {sel:'#scenes',em:'🎬',title:'情景模式',text:'一键编排多个设备。点「观影」会自动调暗灯光、关窗帘、开电视——把繁琐操作封装成一次点击。'},
+  {sel:'.thermo .dial',em:'🌡️',title:'温控旋钮',text:'按住空调表盘上的圆环拖动，即可直接调节温度，进度弧与颜色实时跟随——所见即所得。'},
+  {sel:'#chart',em:'📊',title:'能耗趋势',text:'一眼看清全天用电曲线与各房间占比，帮助你做节能决策。'},
+  {sel:'.auto-card',em:'⏰',title:'定时自动化',text:'设置「23:30 自动进入睡眠模式」这类规则，到点系统主动执行，你也随时能停用——自动化与控制权并存。'},
+  {sel:'.voicebar',em:'🎙️',title:'语音 / 文字指令',text:'输入「打开客厅灯」「把温度调到 24 度」即可。支持的浏览器还能点麦克风语音控制。开始体验吧！'},
+];
+let onbIdx=0;
+function startOnboarding(){onbIdx=0;$('onb').classList.add('show');showStep();}
+function endOnboarding(){$('onb').classList.remove('show');cfg.onboarded=true;persist();}
+function showStep(){
+  const st=ONB_STEPS[onbIdx],spot=$('onbSpot'),tip=$('onbTip');
+  $('onbTitle').innerHTML=`${st.em} ${st.title}`;$('onbText').textContent=st.text;
+  $('onbNext').textContent=onbIdx===ONB_STEPS.length-1?'开始使用':'下一步';
+  $('onbDots').innerHTML=ONB_STEPS.map((_,i)=>`<span class="dot ${i===onbIdx?'on':''}"></span>`).join('');
+  const el=st.sel&&document.querySelector(st.sel);
+  if(el){el.scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'center'});
+    setTimeout(()=>{const r=el.getBoundingClientRect(),pad=8;
+      spot.style.display='block';
+      spot.style.left=(r.left-pad)+'px';spot.style.top=(r.top-pad)+'px';
+      spot.style.width=(r.width+pad*2)+'px';spot.style.height=(r.height+pad*2)+'px';
+      // 提示框放在目标下方或上方
+      const below=r.bottom+200<window.innerHeight;
+      tip.style.left=Math.min(Math.max(12,r.left),window.innerWidth-320)+'px';
+      tip.style.top=(below?r.bottom+14:r.top-tip.offsetHeight-14)+'px';
+    },350);
+  }else{ // 居中欢迎页
+    spot.style.display='none';
+    tip.style.left='50%';tip.style.top='50%';tip.style.transform='translate(-50%,-50%)';
+  }
+  if(el)tip.style.transform='none';
+}
+$('onbNext').onclick=()=>{onbIdx++;onbIdx>=ONB_STEPS.length?endOnboarding():showStep();};
+$('onbSkip').onclick=endOnboarding;
+$('helpBtn').onclick=()=>{toggleMenu(false);startOnboarding();};
+
+/* ==========================================================================
+   总渲染 + 启动
+   ========================================================================== */
+function renderAll(){renderRooms();renderScenes();renderDevices();renderStatus();applyAmbient();renderChart();renderAutomation();applyMusic();}
+
+/* 时钟 + 问候（情境感知）[HCI:情境/个性化] */
+function tick(){
+  const d=new Date(),h=d.getHours();
+  $('clock').textContent=d.toTimeString().slice(0,5);
+  $('greetText').textContent=h<6?'凌晨好':h<11?'早上好':h<14?'中午好':h<18?'下午好':'晚上好';
+  driftIndoor(); $('pillTemp').textContent=S.indoor.toFixed(1)+'°'; // 室温缓慢逼近设定 [HCI:真实匹配]
+  checkAutomation(); // 到点执行定时规则 [HCI:系统主动性]
+}
+
+/* 移动端抽屉式侧栏 [HCI:响应式可达性] */
+const sidebarEl=document.querySelector('.sidebar');
+function toggleMenu(open){
+  sidebarEl.classList.toggle('open',open);
+  $('scrim').classList.toggle('show',open);
+  $('menuBtn').setAttribute('aria-expanded',open);
+}
+$('menuBtn').onclick=()=>toggleMenu(!sidebarEl.classList.contains('open'));
+$('scrim').onclick=()=>toggleMenu(false);
+
+/* 侧栏系统按钮 */
+$('soundToggle').onclick=()=>{cfg.sound=!cfg.sound;$('soundState').textContent=cfg.sound?'开':'关';persist();applyMusic();if(cfg.sound)beep('tick')};
+$('resetBtn').onclick=()=>{pushUndo();S=defaults();cfg.scene=null;persist();renderAll();toggleMenu(false);toast('已恢复默认设置','↺',{label:'撤销',fn:doUndo})};
+
+/* 语音栏 */
+$('voiceSend').onclick=()=>handleCommand($('voiceInput').value);
+$('voiceInput').addEventListener('keydown',e=>{if(e.key==='Enter')handleCommand($('voiceInput').value)});
+$('mic').onclick=function(){
+  // 浏览器原生语音识别（支持则真实识别，否则提示用文字）[HCI:多模态-渐进增强]
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('当前浏览器不支持语音，请输入文字指令','⌨️');$('voiceInput').focus();return;}
+  const rec=new SR();rec.lang='zh-CN';rec.maxAlternatives=5;this.classList.add('listening');
+  // 同音字干扰：取前若干候选，优先选能解析出意图的那条 [HCI:容错]
+  const understandable=t=>matchScene(t)||/灯|空调|温度|冷气|窗帘|音量|声音|电视|音箱|音乐|全部|所有|全屋|帮助|亮|暗|度/.test(t);
+  rec.onresult=e=>{
+    const r=e.results[0],alts=Array.from({length:r.length},(_,i)=>r[i].transcript);
+    const t=alts.find(understandable)||alts[0];
+    $('voiceInput').value=t;handleCommand(t);
+  };
+  rec.onerror=()=>toast('语音识别失败，请重试或输入文字','⚠️');
+  rec.onend=()=>this.classList.remove('listening');
+  rec.start();toast('正在聆听…请说出指令','🎙️');
+};
+
+$('soundState').textContent=cfg.sound?'开':'关';
+tick();setInterval(tick,1000);
+setInterval(renderChart,30000); // 周期刷新能耗图，反映实时变化
+renderAll();
+// 首次访问自动开启新手引导 [HCI:学习性]
+if(!cfg.onboarded) setTimeout(startOnboarding,600);
+</script>
+</body>
+</html>
