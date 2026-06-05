@@ -525,7 +525,7 @@ let music=null, musicPlaying=false, musicCfg=null, progStep=0; // music={master,
 const SCENE_MUSIC={
   /* 晨起 · 「明快晨曲」：G 大调 I-V-vi-IV，中高音区、明亮通透、轻快明媚的竖琴式点缀，无低音 */
   morning:{
-    label:'明快晨曲', wave:'triangle', bright:1750, gain:1.0, bar:3.0, arp:true, arpGap:[.42,1.0], bass:false,
+    label:'明快晨曲', wave:'triangle', bright:1750, gain:1.2, bar:3.0, arp:true, arpGap:[.42,1.0], bass:false,
     prog:[ [196.00,246.94,293.66,392.00],  // G  (G3 B3 D4 G4)
            [146.83,220.00,293.66,369.99],  // D  (D3 A3 D4 F#4)
            [164.81,196.00,246.94,329.63],  // Em (E3 G3 B3 E4)
@@ -535,7 +535,7 @@ const SCENE_MUSIC={
   },
   /* 回家 · 「暖夜慢歌」：Am7-Dm7-G-Cmaj7，低音区、速度很慢、暖而暗、低音拨弦律动 */
   home:{
-    label:'暖夜慢歌', wave:'sine', bright:760, gain:1.15, bar:5.6, arp:true, arpGap:[2.0,3.8], bass:true,
+    label:'暖夜慢歌', wave:'sine', bright:760, gain:1.5, bar:5.6, arp:true, arpGap:[2.0,3.8], bass:true,
     prog:[ [110.00,164.81,196.00,261.63],  // Am7   (A2 E3 G3 C4)
            [146.83,174.61,220.00,261.63],  // Dm7   (D3 F3 A3 C4)
            [ 98.00,146.83,196.00,246.94],  // G     (G2 D3 G3 B3)
@@ -619,7 +619,7 @@ function applyMusic(){
       // 音量：有开着的音箱则跟随其音量滑块，否则用默认值（场景本身即可出声）
       const spk=S.devices.filter(d=>d.type==='speaker'&&d.on);
       const vol = spk.length ? Math.max(...spk.map(d=>d.vol||0))/100 : 0.5;
-      music.master.gain.setTargetAtTime((0.14+0.30*vol)*m.gain, AC.currentTime, 0.4);
+      music.master.gain.setTargetAtTime((0.18+0.34*vol)*m.gain, AC.currentTime, 0.4);
     }else if(music){
       music.master.gain.setTargetAtTime(0, AC.currentTime, 0.4);
       music.bassG.gain.setTargetAtTime(0, AC.currentTime, 0.4);
