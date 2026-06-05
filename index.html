@@ -507,7 +507,7 @@ function beep(kind){
     seq.forEach((f,i)=>{
       const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+i*.08;
       o.frequency.value=f;o.type='sine';
-      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.14,t+.01);
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.32,t+.01);
       g.gain.exponentialRampToValueAtTime(.0001,t+.16);
       o.connect(g).connect(AC.destination);o.start(t);o.stop(t+.18);
     });
@@ -619,7 +619,7 @@ function applyMusic(){
       // 音量：有开着的音箱则跟随其音量滑块，否则用默认值（场景本身即可出声）
       const spk=S.devices.filter(d=>d.type==='speaker'&&d.on);
       const vol = spk.length ? Math.max(...spk.map(d=>d.vol||0))/100 : 0.5;
-      music.master.gain.setTargetAtTime((0.03+0.08*vol)*m.gain, AC.currentTime, 0.4);
+      music.master.gain.setTargetAtTime((0.06+0.16*vol)*m.gain, AC.currentTime, 0.4);
     }else if(music){
       music.master.gain.setTargetAtTime(0, AC.currentTime, 0.4);
       music.bassG.gain.setTargetAtTime(0, AC.currentTime, 0.4);
