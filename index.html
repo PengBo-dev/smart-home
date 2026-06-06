@@ -875,10 +875,11 @@ function applyAmbient(){
 /* ==========================================================================
    语音 / 文本指令解析（模拟 NLP）[HCI:多模态][HCI:自然交互]
    ========================================================================== */
-function handleCommand(raw){
+function handleCommand(raw,opts={}){
   const txt=(raw||'').trim();if(!txt)return;
   beep('tick');
-  const clear=()=>{$('voiceInput').value='';};
+  // keepText：语音识别时保留输入框里的识别文字，让用户看见"听到了什么"，不被清空 [HCI:反馈-可见性]
+  const clear=()=>{if(!opts.keepText)$('voiceInput').value='';};
   const done=(msg,em)=>{clearScene();persist();renderAll();toast(msg,em);clear();};
   // 工具：在指定房间/当前房间/全局里找某类设备
   const pick=(type,room)=>(room&&S.devices.find(d=>d.type===type&&d.room===room.id))
@@ -1151,13 +1152,22 @@ $('mic').onclick=function(){
   // 浏览器原生语音识别（支持则真实识别，否则提示用文字）[HCI:多模态-渐进增强]
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){toast('当前浏览器不支持语音，请输入文字指令','⌨️');$('voiceInput').focus();return;}
-  const rec=new SR();rec.lang='zh-CN';rec.maxAlternatives=5;this.classList.add('listening');
+  const rec=new SR();rec.lang='zh-CN';rec.maxAlternatives=5;rec.interimResults=true;this.classList.add('listening');
   // 同音字干扰：取前若干候选，优先选能解析出意图的那条 [HCI:容错]
   const understandable=t=>matchScene(t)||/灯|空调|温度|冷气|窗帘|音量|声音|电视|音箱|音乐|全部|所有|全屋|帮助|亮|暗|度/.test(t);
+  let handled=false;
   rec.onresult=e=>{
-    const r=e.results[0],alts=Array.from({length:r.length},(_,i)=>r[i].transcript);
-    const t=alts.find(understandable)||alts[0];
-    $('voiceInput').value=t;handleCommand(t);
+    // 边说边把识别文字实时回显到输入框，识别完成才执行指令、且保留文字 [HCI:反馈-可见性]
+    let finalText='',interim='';
+    for(let i=0;i<e.results.length;i++){
+      const res=e.results[i];
+      if(res.isFinal){
+        const alts=Array.from({length:res.length},(_,k)=>res[k].transcript);
+        finalText+=alts.find(understandable)||alts[0];
+      }else interim+=res[0].transcript;
+    }
+    $('voiceInput').value=finalText||interim;            // 实时显示识别文字
+    if(finalText&&!handled){handled=true;handleCommand(finalText,{keepText:true});}
   };
   rec.onerror=()=>toast('语音识别失败，请重试或输入文字','⚠️');
   rec.onend=()=>this.classList.remove('listening');
