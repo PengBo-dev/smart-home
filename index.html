@@ -879,7 +879,9 @@ function applyAmbient(){
    语音 / 文本指令解析（模拟 NLP）[HCI:多模态][HCI:自然交互]
    ========================================================================== */
 function handleCommand(raw,opts={}){
-  const txt=(raw||'').trim();if(!txt)return;
+  let txt=(raw||'').trim();if(!txt)return;
+  // 全角→半角归一化：中文语音/输入法常把数字和百分号识别成全角（０-９ / ％），统一转半角，避免数值提取失败被误判成"打开→100%"[HCI:容错]
+  txt=txt.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/％/g,'%');
   beep('tick');
   // keepText：语音识别时保留输入框里的识别文字，让用户看见"听到了什么"，不被清空 [HCI:反馈-可见性]
   const clear=()=>{if(!opts.keepText)$('voiceInput').value='';};
@@ -953,7 +955,9 @@ function handleCommand(raw,opts={}){
   if(/窗帘/.test(txt)){
     const cu=pick('curtain',room);
     if(cu){
-      let o=/一半/.test(txt)?50:num(/(\d{1,3})\s*%/);
+      let o=/一半|半开|开一半/.test(txt)?50:num(/(\d{1,3})\s*%/);
+      // 兜底再认一次纯数字（如"窗帘调整为50""开合度设到30"），明确数值优先于开/关，避免"开"字把目标盖成100%
+      if(o==null&&/调|设|为|到|至|开合|开度/.test(txt))o=num(/(\d{1,3})/);
       if(o==null){if(on)o=100;else if(off)o=0;}
       if(o!=null){o=Math.max(0,Math.min(100,o));cu.on=o>0;cu.open=o;done(`已将「${roomOf(cu)}窗帘」开合度设为 ${o}%`,'🪟');return;}
     }
