@@ -491,7 +491,9 @@ function matchScene(t){
 const LS='aino.state.v1', LSC='aino.cfg.v1';
 let S=load(LS,defaults()), cfg=load(LSC,{sound:true,room:'living',scene:null});
 if(!S.rules) S.rules=defaults().rules; // 兼容旧版本本地数据
-if(typeof S.indoor!=='number') S.indoor=26; // 实测室内温度（带热惯性，非空调设定值）
+if(typeof S.indoor!=='number'||!Number.isFinite(S.indoor)) S.indoor=26; // 实测室内温度（带热惯性，非空调设定值）
+// 清洗历史脏数据：localStorage 里若残留过 NaN/null 的空调温度，复位为 26，避免污染室温显示
+S.devices&&S.devices.forEach(d=>{if(d.type==='ac'&&!Number.isFinite(d.temp))d.temp=26;});
 function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
 function persist(){localStorage.setItem(LS,JSON.stringify(S));localStorage.setItem(LSC,JSON.stringify(cfg))}
 
@@ -854,12 +856,13 @@ function renderStatus(){
 }
 /* 室内温度目标：有空调取其设定均值，否则趋向室外基线 28° [HCI:真实匹配] */
 function indoorTarget(){
-  const acs=S.devices.filter(d=>d.type==='ac'&&d.on);
+  const acs=S.devices.filter(d=>d.type==='ac'&&d.on&&Number.isFinite(d.temp)); // 只纳入温度有效的空调，杜绝 NaN 传染
   return acs.length? acs.reduce((a,b)=>a+b.temp,0)/acs.length : 28;
 }
 /* 每秒一步，缓慢逼近目标，模拟热惯性 [HCI:真实世界匹配] */
 function driftIndoor(){
   const tgt=indoorTarget();
+  if(!Number.isFinite(S.indoor)) S.indoor=tgt; // 室温一旦失效，直接跳回目标值自愈，不会卡在 NaN
   if(Math.abs(tgt-S.indoor)<0.05) S.indoor=tgt;
   else S.indoor += (tgt-S.indoor)*0.08;
 }
@@ -888,7 +891,7 @@ function handleCommand(raw,opts={}){
   const room=S.rooms.find(r=>txt.includes(r.name));
   const on=/开|打开|启动|开启|亮起|播放/.test(txt)&&!/关/.test(txt);
   const off=/关|关闭|停止|关掉|熄灭|静音/.test(txt);
-  const num=re=>{const m=txt.match(re);return m?+(m.find((g,i)=>i>0&&g!=null)):null;};
+  const num=re=>{const m=txt.match(re);if(!m)return null;const g=m.find((v,i)=>i>0&&v!=null);const n=g==null?NaN:+g;return Number.isFinite(n)?n:null;};
 
   // 0) 帮助意图
   if(/帮助|你能|能做什么|怎么用|能干|使用说明|有什么功能|不会用/.test(txt)){
