@@ -922,12 +922,16 @@ function handleCommand(raw,opts={}){
   if(/温度|空调|冷气|热|冷|暖|凉/.test(txt)||/\d\s*度/.test(txt)){
     const ac=pick('ac',room);
     if(ac){
+      // 模式切换：制冷/制热/自动（"暖一点/冷一点"是相对调温，不在此匹配，避免误判）[HCI:自然交互]
+      const mode=/制冷|冷气|制凉|开冷风/.test(txt)?'cool':/制热|制暖|暖风|热风|开热风/.test(txt)?'heat':/自动模式|自动运行|空调自动|调成自动|设为自动|切到自动/.test(txt)?'auto':null;
       let t=num(/(\d{1,2})\s*度|温度\D*?(\d{1,2})|调到\D*?(\d{1,2})/);
       if(t==null){
         if(/最高|最热|最暖/.test(txt))t=30; else if(/最低|最冷|最凉/.test(txt))t=16;
         else if(/升高|调高|高一点|高点|暖一点|热一点|加/.test(txt))t=ac.temp+1;
         else if(/降低|调低|低一点|低点|冷一点|凉一点|减/.test(txt))t=ac.temp-1;
       }
+      if(mode){ac.on=true;ac.mode=mode;const ml={cool:'制冷',heat:'制热',auto:'自动'}[mode],me={cool:'❄️',heat:'🔥',auto:'🌀'}[mode];
+        if(t!=null){t=Math.max(16,Math.min(30,t));ac.temp=t;done(`已将「${roomOf(ac)}空调」切到${ml}并调到 ${t}°C`,me);}else done(`已将「${roomOf(ac)}空调」切到${ml}`,me);return;}
       if(t!=null){t=Math.max(16,Math.min(30,t));ac.on=true;ac.temp=t;done(`已将「${roomOf(ac)}空调」设为 ${t}°C`,'🌡️');return;}
     }
   }
