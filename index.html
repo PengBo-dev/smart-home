@@ -882,6 +882,11 @@ function handleCommand(raw,opts={}){
   let txt=(raw||'').trim();if(!txt)return;
   // 全角→半角归一化：中文语音/输入法常把数字和百分号识别成全角（０-９ / ％），统一转半角，避免数值提取失败被误判成"打开→100%"[HCI:容错]
   txt=txt.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/％/g,'%');
+  // 中文数字→阿拉伯数字（覆盖 0-100，含"百分之X"），让"百分之五十""调到二十四度""音量五十"等口语也能被解析 [HCI:容错]
+  {const CN={零:0,一:1,二:2,两:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};
+   const cn2num=s=>{let r=0,cur=0;for(const ch of s){if(ch in CN)cur=CN[ch];else if(ch==='十'){r+=(cur||1)*10;cur=0;}else if(ch==='百'){r+=(cur||1)*100;cur=0;}}return r+cur;};
+   txt=txt.replace(/百分之([零一二两三四五六七八九十百]+)/g,(_,n)=>cn2num(n)+'%')
+          .replace(/[零一二两三四五六七八九十百]+(?!半)/g,m=>cn2num(m));}
   beep('tick');
   // keepText：语音识别时保留输入框里的识别文字，让用户看见"听到了什么"，不被清空 [HCI:反馈-可见性]
   const clear=()=>{if(!opts.keepText)$('voiceInput').value='';};
